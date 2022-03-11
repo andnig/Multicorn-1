@@ -93,7 +93,8 @@ log_to_postgres(PyObject *self, PyObject *args, PyObject *kwargs)
 	if (errstart(severity, TEXTDOMAIN))
 #else
 	if (errstart(severity, __FILE__, __LINE__, PG_FUNCNAME_MACRO, TEXTDOMAIN))
-#endif	{
+#endif	
+	{
 		errmsg("%s", message);
 		if (hint != NULL && hint != Py_None)
 		{
