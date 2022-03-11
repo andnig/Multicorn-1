@@ -111,7 +111,8 @@ log_to_postgres(PyObject *self, PyObject *args, PyObject *kwargs)
 		errfinish(__FILE__, __LINE__, PG_FUNCNAME_MACRO);
 #else
 		errfinish(0);
-#endif	}
+#endif	
+	}
 	else
 	{
 		Py_DECREF(args);
