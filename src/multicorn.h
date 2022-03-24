@@ -58,6 +58,28 @@ typedef struct ConversionInfo
 	bool		need_quote;
 }	ConversionInfo;
 
+/*
+ * Context for multicorn_deparse_expr
+ */
+typedef struct deparse_expr_cxt
+{
+	PlannerInfo *root;			/* global planner state */
+	RelOptInfo *foreignrel;		/* the foreign relation we are planning for */
+	RelOptInfo *scanrel;		/* the underlying scan relation. Same as
+								 * foreignrel, when that represents a join or
+								 * a base relation. */
+
+	StringInfo	buf;			/* output buffer to append to */
+	List	  **params_list;	/* exprs that will become remote Params */
+	bool		can_skip_cast;	/* outer function can skip int2/int4/int8/float4/float8 cast */
+} deparse_expr_cxt;
+
+/*
+ * FDW-specific planner information kept in RelOptInfo.fdw_private for a
+ * multicorn foreign table.
+ * multicornGetForeignJoinPaths creates it for a joinrel (not implemented yet),
+ * and mutlicornGetForeignUpperPaths creates it for an upperrel.
+ */
 
 typedef struct MulticornPlanState
 {
@@ -78,6 +100,65 @@ typedef struct MulticornPlanState
 	 * getRelSize to GetForeignPlan.
 	 */
 	int width;
+
+	
+    /* Details about upperrel pushdown fetched from the Python FDW instance */
+    bool groupby_supported;
+    List *agg_functions;
+
+    /*
+     * Aggregation and grouping data to be passed to the execution phase.
+     * See MulticornExecState for more details.
+     */
+    List *upper_rel_targets;
+	List *aggs;
+	List *group_clauses;
+
+    /*
+	 * True means that the relation can be pushed down. Always true for simple
+	 * foreign scan.
+	 */
+	bool		pushdown_safe;
+
+	/* baserestrictinfo clauses, broken down into safe and unsafe subsets. */
+	List	   *remote_conds;
+	List	   *local_conds;
+
+    /* Actual remote restriction clauses for scan (sans RestrictInfos) */
+	List	   *final_remote_exprs;
+
+	/* Estimated size and cost for a scan or join. */
+	double		rows;
+	Cost		startup_cost;
+	Cost		total_cost;
+
+	/* Costs excluding costs for transferring data from the foreign server */
+	double		retrieved_rows;
+	Cost		rel_startup_cost;
+	Cost		rel_total_cost;
+
+	/* Options extracted from catalogs. */
+	bool		use_remote_estimate;
+	Cost		fdw_startup_cost;
+	Cost		fdw_tuple_cost;
+	List	   *shippable_extensions;	/* OIDs of whitelisted extensions */
+
+	/* Join information */
+	RelOptInfo *outerrel;
+
+	/* Upper relation information */
+	UpperRelationKind stage;
+
+	/* Cached catalog information. */
+	ForeignTable *table;
+	ForeignServer *server;
+	UserMapping *user;			/* only set in use_remote_estimate mode */
+
+	int			fetch_size;		/* fetch size for this remote table */
+
+	/* Grouping information */
+	List	   *grouped_tlist;
+
 }	MulticornPlanState;
 
 typedef struct MulticornExecState
@@ -91,11 +172,35 @@ typedef struct MulticornExecState
 	Datum	   *values;
 	bool	   *nulls;
 	ConversionInfo **cinfos;
+	    /*
+     * List containing targets to be returned from Python in case of aggregations.
+     * List elements are aggregation keys or group_clauses elements.
+     */
+    List *upper_rel_targets;
+    /*
+     * In case the query contains aggregations, the lists below details which
+     * functions correspond to which columns.
+     * List elements are themselves Lists of String nodes, denoting agg key,
+     * operation and column names, respectively. The agg key corresponds to the
+     * upper_rel_targets list entries.
+     */
+	List *aggs;
+    /*
+     * List containing GROUP BY information.
+     * List elements are column names for grouping.
+     */
+	List *group_clauses;
+
 	/* Common buffer to avoid repeated allocations */
 	StringInfo	buffer;
 	AttrNumber	rowidAttno;
 	char	   *rowidAttrName;
 	List	   *pathkeys; /* list of MulticornDeparsedSortGroup) */
+	
+    Relation	rel;			/* relcache entry for the foreign table. NULL
+								 * for a foreign join scan. */
+	TupleDesc	tupdesc;		/* tuple descriptor of scan */
+
 }	MulticornExecState;
 
 typedef struct MulticornModifyState
@@ -149,6 +254,22 @@ typedef struct MulticornDeparsedSortGroup
 	PathKey	*key;
 } MulticornDeparsedSortGroup;
 
+/* deparse.c */
+extern void multicorn_classify_conditions(PlannerInfo *root,
+                                RelOptInfo *baserel,
+                                List *input_conds,
+                                List **remote_conds,
+                                List **local_conds);
+extern bool multicorn_is_foreign_expr(PlannerInfo *root,
+								      RelOptInfo *baserel,
+								      Expr *expr);
+extern bool multicorn_is_foreign_param(PlannerInfo *root,
+									   RelOptInfo *baserel,
+									   Expr *expr);
+extern List *multicorn_build_tlist_to_deparse(RelOptInfo *foreignrel);
+extern void multicorn_extract_upper_rel_info(PlannerInfo *root, List *tlist, MulticornPlanState *fpinfo);
+
+
 /* errors.c */
 PGDLLEXPORT void		errorCheck(void);
 
@@ -168,6 +289,7 @@ PGDLLEXPORT PyObject   *tupleTableSlotToPyObject(TupleTableSlot *slot, Conversio
 PGDLLEXPORT char	   *getRowIdColumn(PyObject *fdw_instance);
 PGDLLEXPORT PyObject   *optionsListToPyDict(List *options);
 PGDLLEXPORT const char *getPythonEncodingName(void);
+bool canPushdownUpperrel(MulticornPlanState * state);
 
 PGDLLEXPORT void getRelSize(MulticornPlanState * state,
 		PlannerInfo *root,
@@ -192,10 +314,10 @@ PGDLLEXPORT void extractRestrictions(Relids base_relids,
 					List **quals);
 PGDLLEXPORT List	   *extractColumns(List *reltargetlist, List *restrictinfolist);
 PGDLLEXPORT void initConversioninfo(ConversionInfo ** cinfo,
-		AttInMetadata *attinmeta);
+		AttInMetadata *attinmeta, List *upper_rel_targets);
 
-PGDLLEXPORT Value *colnameFromVar(Var *var, PlannerInfo *root,
-		MulticornPlanState * state);
+PGDLLEXPORT Value *colnameFromVar(Var *var, PlannerInfo *root);
+
 
 PGDLLEXPORT void computeDeparsedSortGroup(List *deparsed, MulticornPlanState *planstate,
 		List **apply_pathkeys,
