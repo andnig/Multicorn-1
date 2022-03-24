@@ -194,17 +194,30 @@ multicorn_foreign_expr_walker(Node *node,
 						state = FDW_COLLATE_UNSAFE;
 					}
 				}
-			}
-			break;
-        case T_FuncExpr:
+            }
+            break;
+            case T_FuncExpr:
             {
-                FuncExpr   *fe = (FuncExpr *) node;
+#if PG_VERSION_NUM >= 130000
+                if (errstart(INFO, TEXTDOMAIN))
+#else
+                if (errstart(INFO, __FILE__, __LINE__, PG_FUNCNAME_MACRO, TEXTDOMAIN))
+#endif
+                {
+                    errmsg("i am in the funcexpr");
+#if PG_VERSION_NUM >= 130000
+                    errfinish(__FILE__, __LINE__, PG_FUNCNAME_MACRO);
+#else
+                    errfinish(0);
+#endif
+                }
+                FuncExpr *fe = (FuncExpr *)node;
 
                 /*
-                * Recurse to input subexpressions.
-                */
-                if (!multicorn_foreign_expr_walker((Node *) fe->args,
-                                        glob_cxt, &inner_cxt, case_arg_cxt))
+                 * Recurse to input subexpressions.
+                 */
+                if (!multicorn_foreign_expr_walker((Node *)fe->args,
+                                                   glob_cxt, &inner_cxt, case_arg_cxt))
                     return false;
 
                 /*
@@ -252,10 +265,6 @@ multicorn_foreign_expr_walker(Node *node,
 				opername = pstrdup(((Form_pg_proc) GETSTRUCT(tuple))->proname.data);
 				schema = ((Form_pg_proc) GETSTRUCT(tuple))->pronamespace;
 				ReleaseSysCache(tuple);
-
-				/* ignore functions in other than the pg_catalog schema */
-				if (schema != PG_CATALOG_NAMESPACE)
-					return false;
 
 				/* Make sure the specific function at hand is shippable
                  * NB: here we deviate from standard FDW code, since the allowed
