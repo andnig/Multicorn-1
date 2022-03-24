@@ -983,6 +983,7 @@ execute(ForeignScanState *node, ExplainState *es)
 		if(PyList_Size(p_pathkeys) > 0){
 			PyDict_SetItemString(kwargs, "sortkeys", p_pathkeys);
 		}
+
 		        if (state->aggs)
         {
             PyObject *aggs = PyDict_New();
@@ -1076,7 +1077,25 @@ pynumberToCString(PyObject *pyobject, StringInfo buffer,
 	char	   *tempbuffer;
 	Py_ssize_t	strlength = 0;
 
-	pTempStr = PyObject_Str(pyobject);
+	if (
+        !PyLong_Check(pyobject) &&
+        (cinfo->atttypoid == INT2OID || cinfo->atttypoid == INT4OID || cinfo->atttypoid == INT8OID)
+    )
+    {
+        /*
+         * Certain data sources, such as ElasticSearch, can return floats for
+         * aggregations of integers that are expected to return integers
+         * (e.g. min, max, sum), so we basically need to do int() here.
+         */
+        pyTempLong = PyNumber_Long(pyobject);
+        pTempStr = PyObject_Str(pyTempLong);
+        Py_DECREF(pyTempLong);
+    }
+    else
+    {
+        pTempStr = PyObject_Str(pyobject);
+    }
+
 	PyString_AsStringAndSize(pTempStr, &tempbuffer, &strlength);
 	appendBinaryStringInfo(buffer, tempbuffer, strlength);
 	Py_DECREF(pTempStr);
@@ -1239,24 +1258,7 @@ void
 pyunknownToCstring(PyObject *pyobject, StringInfo buffer,
 				   ConversionInfo * cinfo)
 {
-    if (
-        !PyLong_Check(pyobject) &&
-        (cinfo->atttypoid == INT2OID || cinfo->atttypoid == INT4OID || cinfo->atttypoid == INT8OID)
-    )
-    {
-        /*
-         * Certain data sources, such as ElasticSearch, can return floats for
-         * aggregations of integers that are expected to return integers
-         * (e.g. min, max, sum), so we basically need to do int() here.
-         */
-        pyTempLong = PyNumber_Long(pyobject);
-        pTempStr = PyObject_Str(pyTempLong);
-        Py_DECREF(pyTempLong);
-    }
-    else
-    {
-        pTempStr = PyObject_Str(pyobject);
-    }
+	PyObject   *pTempStr = PyObject_Str(pyobject);
 	char	   *tempbuffer;
 	Py_ssize_t	strlength;
 
@@ -1789,6 +1791,7 @@ canPushdownUpperrel(MulticornPlanState * state)
 	Py_XDECREF(p_upperrel_pushdown);
     return pushdown_upperrel;
 }
+
 
 PyObject *
 tupleTableSlotToPyObject(TupleTableSlot *slot, ConversionInfo ** cinfos)
