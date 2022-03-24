@@ -128,14 +128,12 @@ multicorn_foreign_expr_walker(Node *node,
 	inner_cxt.state = FDW_COLLATE_NONE;
 
     #if PG_VERSION_NUM >= 130000
-	if (errstart(severity, TEXTDOMAIN))
+	if (errstart(INFO, TEXTDOMAIN))
 #else
-	if (errstart(severity, __FILE__, __LINE__, PG_FUNCNAME_MACRO, TEXTDOMAIN))
+	if (errstart(INFO, __FILE__, __LINE__, PG_FUNCNAME_MACRO, TEXTDOMAIN))
 #endif	
 	{
 		errmsg("my node is %d", nodeTag(node));
-		Py_DECREF(args);
-		Py_DECREF(kwargs);
 #if PG_VERSION_NUM >= 130000
 		errfinish(__FILE__, __LINE__, PG_FUNCNAME_MACRO);
 #else
