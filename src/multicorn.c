@@ -546,6 +546,16 @@ multicornGetForeignPlan(PlannerInfo *root,
          */
         ofpinfo = (MulticornPlanState *) planstate->outerrel->fdw_private;
         planstate->baserestrictinfo = extract_actual_clauses(ofpinfo->baserestrictinfo, false);
+
+		        /*
+         * In case of a join or aggregate use the lowest-numbered member RTE out
+         * of all all the base relations participating in the underlying scan.
+         *
+         * NB: This may not work well in case of joins, keep an eye out for it.
+         * We extract it here because fs_relids in execution phase can get distorted
+         * in case of joins + agg combos.
+         */
+        planstate->rtindex = makeInteger(bms_next_member(root->all_baserels, -1));
     }
 
 
