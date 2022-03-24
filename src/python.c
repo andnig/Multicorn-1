@@ -1772,7 +1772,7 @@ canPushdownUpperrel(MulticornPlanState * state)
                 *p_object,
                 *p_agg_funcs,
                 *p_agg_func,
-                *p_item;
+                *p_item,
 				*p_ops;
     bool pushdown_upperrel = false;
 
