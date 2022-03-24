@@ -180,6 +180,53 @@ multicorn_foreign_expr_walker(Node *node,
 				}
 			}
 			break;
+        case T_FuncExpr:
+            {
+                FuncExpr   *fe = (FuncExpr *) node;
+
+                /*
+                * If function used by the expression is not shippable, it
+                * can't be sent to remote because it might have incompatible
+                * semantics on remote side.
+                */
+                if (!is_shippable(fe->funcid, ProcedureRelationId, fpinfo))
+                    return false;
+
+                /*
+                * Recurse to input subexpressions.
+                */
+                if (!foreign_expr_walker((Node *) fe->args,
+                                        glob_cxt, &inner_cxt, case_arg_cxt))
+                    return false;
+
+                /*
+                * If function's input collation is not derived from a foreign
+                * Var, it can't be sent to remote.
+                */
+                if (fe->inputcollid == InvalidOid)
+                    /* OK, inputs are all noncollatable */ ;
+                else if (inner_cxt.state != FDW_COLLATE_SAFE ||
+                        fe->inputcollid != inner_cxt.collation)
+                    return false;
+
+                /*
+                * Detect whether node is introducing a collation not derived
+                * from a foreign Var.  (If so, we just mark it unsafe for now
+                * rather than immediately returning false, since the parent
+                * node might not care.)
+                */
+                collation = fe->funccollid;
+                if (collation == InvalidOid)
+                    state = FDW_COLLATE_NONE;
+                else if (inner_cxt.state == FDW_COLLATE_SAFE &&
+                        collation == inner_cxt.collation)
+                    state = FDW_COLLATE_SAFE;
+                else if (collation == DEFAULT_COLLATION_OID)
+                    state = FDW_COLLATE_NONE;
+                else
+                    state = FDW_COLLATE_UNSAFE;
+            }
+            break;
 		case T_Aggref:
 			{
 				Aggref	   *agg = (Aggref *) node;
@@ -390,7 +437,6 @@ multicorn_is_foreign_expr(PlannerInfo *root,
 	 */
 	if (loc_cxt.state == FDW_COLLATE_UNSAFE)
     {
-        elog(INFO, "collation %s", loc_cxt.state);
 		return false;
     }
 	// /*
