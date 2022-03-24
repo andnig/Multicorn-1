@@ -126,6 +126,23 @@ multicorn_foreign_expr_walker(Node *node,
 	/* Set up inner_cxt for possible recursion to child nodes */
 	inner_cxt.collation = InvalidOid;
 	inner_cxt.state = FDW_COLLATE_NONE;
+
+    #if PG_VERSION_NUM >= 130000
+	if (errstart(severity, TEXTDOMAIN))
+#else
+	if (errstart(severity, __FILE__, __LINE__, PG_FUNCNAME_MACRO, TEXTDOMAIN))
+#endif	
+	{
+		errmsg("my node is %d", nodeTag(node));
+		Py_DECREF(args);
+		Py_DECREF(kwargs);
+#if PG_VERSION_NUM >= 130000
+		errfinish(__FILE__, __LINE__, PG_FUNCNAME_MACRO);
+#else
+		errfinish(0);
+#endif	
+	}
+
 	switch (nodeTag(node))
 	{
 		case T_Var:
