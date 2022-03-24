@@ -390,8 +390,8 @@ multicorn_is_foreign_expr(PlannerInfo *root,
 	 */
 	if (loc_cxt.state == FDW_COLLATE_UNSAFE)
     {
-		return false;
         elog(INFO, "collation %s", loc_cxt.state);
+		return false;
     }
 	// /*
 	//  * An expression which includes any mutable functions can't be sent over
