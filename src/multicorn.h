@@ -105,6 +105,7 @@ typedef struct MulticornPlanState
     /* Details about upperrel pushdown fetched from the Python FDW instance */
     bool groupby_supported;
     List *agg_functions;
+    List *operators_supported;
 
     /*
      * Aggregation and grouping data to be passed to the execution phase.
@@ -120,9 +121,9 @@ typedef struct MulticornPlanState
 	 */
 	bool		pushdown_safe;
 
-	/* baserestrictinfo clauses, broken down into safe and unsafe subsets. */
-	List	   *remote_conds;
-	List	   *local_conds;
+	/* qual clauses */
+	List	   *baserestrictinfo;
+	Value *rtindex;
 
     /* Actual remote restriction clauses for scan (sans RestrictInfos) */
 	List	   *final_remote_exprs;
@@ -172,6 +173,14 @@ typedef struct MulticornExecState
 	Datum	   *values;
 	bool	   *nulls;
 	ConversionInfo **cinfos;
+
+	/*
+     * In case of aggregations the upper rel target list does not correspond to
+     * the base table target list, so separate conversion information must be
+     * provided when converting the quals in the execute method.
+     */
+    ConversionInfo **qual_cinfos;
+
 	    /*
      * List containing targets to be returned from Python in case of aggregations.
      * List elements are aggregation keys or group_clauses elements.
@@ -190,6 +199,13 @@ typedef struct MulticornExecState
      * List elements are column names for grouping.
      */
 	List *group_clauses;
+
+	/*
+     * Qual conditions parsed in the MulticornGetForeignRelSize
+     */
+    List *baserestrictinfo;
+	Value *rtindex;
+
 
 	/* Common buffer to avoid repeated allocations */
 	StringInfo	buffer;
@@ -255,11 +271,6 @@ typedef struct MulticornDeparsedSortGroup
 } MulticornDeparsedSortGroup;
 
 /* deparse.c */
-extern void multicorn_classify_conditions(PlannerInfo *root,
-                                RelOptInfo *baserel,
-                                List *input_conds,
-                                List **remote_conds,
-                                List **local_conds);
 extern bool multicorn_is_foreign_expr(PlannerInfo *root,
 								      RelOptInfo *baserel,
 								      Expr *expr);
