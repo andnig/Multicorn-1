@@ -106,7 +106,8 @@ multicorn_is_builtin(Oid oid)
 static bool
 multicorn_foreign_expr_walker(Node *node,
 						      foreign_glob_cxt *glob_cxt,
-						      foreign_loc_cxt *outer_cxt)
+						      foreign_loc_cxt *outer_cxt,
+                              foreign_loc_cxt *case_arg_cxt)
 {
 	bool		check_type = true;
     MulticornPlanState *fpinfo;
@@ -185,17 +186,9 @@ multicorn_foreign_expr_walker(Node *node,
                 FuncExpr   *fe = (FuncExpr *) node;
 
                 /*
-                * If function used by the expression is not shippable, it
-                * can't be sent to remote because it might have incompatible
-                * semantics on remote side.
-                */
-                if (!is_shippable(fe->funcid, ProcedureRelationId, fpinfo))
-                    return false;
-
-                /*
                 * Recurse to input subexpressions.
                 */
-                if (!foreign_expr_walker((Node *) fe->args,
+                if (!multicorn_foreign_expr_walker((Node *) fe->args,
                                         glob_cxt, &inner_cxt, case_arg_cxt))
                     return false;
 
@@ -297,7 +290,7 @@ multicorn_foreign_expr_walker(Node *node,
 						n = (Node *) tle->expr;
 					}
 
-					if (!multicorn_foreign_expr_walker(n, glob_cxt, &inner_cxt))
+					if (!multicorn_foreign_expr_walker(n, glob_cxt, &inner_cxt, case_arg_cxt))
 						return false;
 				}
 
@@ -428,7 +421,7 @@ multicorn_is_foreign_expr(PlannerInfo *root,
 		glob_cxt.relids = baserel->relids;
 	loc_cxt.collation = InvalidOid;
 	loc_cxt.state = FDW_COLLATE_NONE;
-	if (!multicorn_foreign_expr_walker((Node *) expr, &glob_cxt, &loc_cxt))
+	if (!multicorn_foreign_expr_walker((Node *) expr, &glob_cxt, &loc_cxt, NULL))
 		return false;
 
 	/*
