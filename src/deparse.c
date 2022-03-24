@@ -389,8 +389,10 @@ multicorn_is_foreign_expr(PlannerInfo *root,
 	 * foreign var, the expression can not be sent over.
 	 */
 	if (loc_cxt.state == FDW_COLLATE_UNSAFE)
+    {
 		return false;
-
+        elog(INFO, "collation %s", loc_cxt.state);
+    }
 	// /*
 	//  * An expression which includes any mutable functions can't be sent over
 	//  * because its result is not stable.  For example, sending now() remote
