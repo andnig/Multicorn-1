@@ -526,10 +526,9 @@ multicornGetForeignPlan(PlannerInfo *root,
 		}
 	}
 
-    /* Extract data needed for aggregations on the Python side */
     if (IS_UPPER_REL(foreignrel))
     {
-		/*
+        /*
          * TODO: fdw_scan_tlist is present in the execute phase as well, via
          * node->ss.ps.plan.fdw_scan_tlist, and instead of root, one can employ
          * rte = exec_rt_fetch(rtindex, estate) to fetch the column name through
@@ -539,27 +538,16 @@ multicornGetForeignPlan(PlannerInfo *root,
          * reduce the duplication of plan and execute fields that are now being
          * serialized.
          */
-
         multicorn_extract_upper_rel_info(root, fdw_scan_tlist, planstate);
 
-		
         /*
          * Since scan_clauses are empty in case of upper relations for some
          * reason. We pass the clauses from the base relation obtained in MulticornGetForeignRelSize.
          */
         ofpinfo = (MulticornPlanState *) planstate->outerrel->fdw_private;
         planstate->baserestrictinfo = extract_actual_clauses(ofpinfo->baserestrictinfo, false);
-		
-        /*
-         * In case of a join or aggregate use the lowest-numbered member RTE out
-         * of all all the base relations participating in the underlying scan.
-         *
-         * NB: This may not work well in case of joins, keep an eye out for it.
-         * We extract it here because fs_relids in execution phase can get distorted
-         * in case of joins + agg combos.
-         */
-        planstate->rtindex = makeInteger(bms_next_member(root->all_baserels, -1));
     }
+
 
 	return make_foreignscan(tlist,
 							scan_clauses,
@@ -1590,7 +1578,7 @@ serializePlanState(MulticornPlanState * state)
 
     result = lappend(result, state->group_clauses);
 
-	result = lappend(result, state->baserestrictinfo);
+    result = lappend(result, state->baserestrictinfo);
 
 	result = lappend(result, state->rtindex);
 
@@ -1634,8 +1622,8 @@ initializeExecState(void *internalstate)
     execstate->aggs = list_nth(values, 5);
     execstate->group_clauses = list_nth(values, 6);
 
-	execstate->baserestrictinfo = list_nth(values, 7);
-    execstate->rtindex = list_nth(values, 8);
+    execstate->baserestrictinfo = list_nth(values, 7);
+	execstate->rtindex = list_nth(values, 8);
 
 	return execstate;
 }

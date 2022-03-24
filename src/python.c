@@ -1771,8 +1771,6 @@ canPushdownUpperrel(MulticornPlanState * state)
                 *p_upperrel_pushdown,
                 *p_object,
                 *p_agg_funcs,
-                *p_agg_func,
-                *p_item,
 				*p_ops;
     bool pushdown_upperrel = false;
 
@@ -1796,9 +1794,11 @@ canPushdownUpperrel(MulticornPlanState * state)
         p_agg_funcs = PyMapping_GetItemString(p_upperrel_pushdown, "agg_functions");
         pythonUnicodeSequenceToList(p_agg_funcs, &state->agg_functions);
         Py_XDECREF(p_agg_funcs);
-		
-		/* Construct supported qual operators list */
+
+        /* Construct supported qual operators list */
         p_ops = PyMapping_GetItemString(p_upperrel_pushdown, "operators_supported");
+        pythonUnicodeSequenceToList(p_ops, &state->operators_supported);
+        Py_XDECREF(p_ops);
 
         pushdown_upperrel = true;
     }
